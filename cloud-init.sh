@@ -63,7 +63,7 @@ octetd=$(echo $ip | cut -d. -f4)
 octetsum=$((octetb + octetc + octetd))
 brnet=$((octetsum % 256))
 docker network create --subnet=192.168.$brnet.0/24 avxtestnet
-docker run -d -p 8080:8080 --network=avxtestnet jorgecortesdocker/myipapp:v3
+docker run -d -p 8080:8080 --network=avxtestnet jorgecortesdocker/myipapp:v4
 apt install -y tcpdump hping3 inetutils-traceroute tcptraceroute dnsutils netcat build-essential git apt-transport-https ca-certificates curl software-properties-common mtr nginx paris-traceroute
 echo -e  "\n\r\t\033[32m***Welcome to $(hostname -I)on port 80***\033[0m\n\r" | tee /var/www/html/index.nginx-debian.html
 git clone https://github.com/microsoft/ntttcp-for-linux.git

@@ -252,7 +252,7 @@ resource "kubernetes_deployment_v1" "myipapp_deployment" {
       spec {
         container {
           name  = "myipapp-container"
-          image = "jorgecortesdocker/myipapp:v3"
+          image = "jorgecortesdocker/myipapp:v4"
 
           port {
             container_port = 8080
