@@ -257,7 +257,23 @@ resource "kubernetes_deployment_v1" "myipapp_deployment" {
           port {
             container_port = 8080
           }
+          volume_mount {
+            name       = "ca-bundle"
+            mount_path = "/etc/ssl/certs/ca-certificates.crt"
+            sub_path = "ca-bundle.pem"
+            read_only = true
+          }
+          env {
+            name = "PORT"
+            value = 8080
+          }
         }
+        volume {
+          name = "ca-bundle"
+          config_map {
+            name = "ca-bundle"
+          }
+        }        
         affinity {
           node_affinity {
             required_during_scheduling_ignored_during_execution {
