@@ -86,7 +86,7 @@ case "\$\{PLUTO_VERB\}" in
       \$IP route delete 10.0.0.0/8 dev \$\{VTI_INTERFACE\}
       \$IP route delete 172.16.0.0/12 dev \$\{VTI_INTERFACE\}
       \$IP route delete 192.168.0.0/16 dev \$\{VTI_INTERFACE\}
-      \$IP route add 100.64.0.0/10 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      \$IP route delete 100.64.0.0/10 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
       ;;
 esac
 sysctl -w net.ipv4.conf.eth0.disable_policy=1
