@@ -1,0 +1,170 @@
+#!/bin/bash
+apt-get update -y
+apt-get install -y strongswan strongswan-pki libstrongswan-extra-plugins bird
+echo "net.ipv4.ip_forward=1" | tee -a /etc/sysctl.conf
+ip route add ${vnet_cidr} via ${lan_gw} dev eth1
+ip route add ${onprem_vm_cidr} via ${lan_gw} dev eth1
+
+cat > /etc/ipsec.conf <<EOF
+config setup
+    charondebug="ike 1, knl 1, cfg 0"
+    uniqueids=no
+
+conn %default    
+    auto=start
+    type=tunnel    
+    left=${local_private_ip}
+    leftid=${local_public_ip}
+    leftsubnet=0.0.0.0/0
+    rightsubnet=0.0.0.0/0
+    keyexchange=ikev2
+    ike=aes256-sha256-modp2048
+    esp=aes256gcm128-modp2048
+    ikelifetime=86400s
+    lifetime=86400s
+    dpddelay=30s
+    dpdtimeout=120s
+    dpdaction=restart
+    closeaction=restart
+    authby=secret
+    leftupdown=/etc/strongswan.d/ipsec-vti.sh
+
+conn AVX_SPOKEGW
+    right=${spoke_gw}
+    rightid=${spoke_gw}
+    mark=%unique
+
+conn AVX_SPOKEGWHA
+    right=${spoke_gwha}
+    rightid=${spoke_gwha}
+    mark=%unique
+EOF
+
+cat > /etc/ipsec.secrets <<EOF
+${local_public_ip} ${spoke_gw} : PSK "${preshared_key}"
+${local_public_ip} ${spoke_gwha} : PSK "${preshared_key}"
+EOF
+
+sed -i 's/# install_routes = yes/install_routes = no/g' /etc/strongswan.d/charon.conf
+sed -i 's/# install_virtual_ip = yes/install_virtual_ip = no/g' /etc/strongswan.d/charon.conf
+
+cat > /etc/strongswan.d/ipsec-vti.sh <<EOF
+#!/bin/bash
+IP=\$(which ip)
+IPTABLES=\$(which iptables)
+IFS='/' read -ra PLUTO_MARK_OUT_ARR <<< "\$PLUTO_MARK_OUT"
+IFS='/' read -ra PLUTO_MARK_IN_ARR <<< "\$PLUTO_MARK_IN"
+
+OKEY=\$\{PLUTO_MARK_OUT_ARR[0]\}
+IKEY=\$\{PLUTO_MARK_IN_ARR[0]\}
+
+case "\$PLUTO_CONNECTION" in
+  AVX_SPOKEGW)
+    VTI_INTERFACE=vti2
+    VTI_LOCALADDR=${vti2_local}
+    VTI_REMOTEADDR=${vti2_remote}
+    METRIC=100
+    ;;
+  AVX_SPOKEGWHA)
+    VTI_INTERFACE=vti3
+    VTI_LOCALADDR=${vti3_local}
+    VTI_REMOTEADDR=${vti3_remote}
+    METRIC=200
+    ;;
+esac
+case "\$\{PLUTO_VERB\}" in
+    up-client)
+      echo "Running up-client case" >> /var/log/ipsec-vti.log
+      \$IP link add \$\{VTI_INTERFACE\} type vti local \$\{PLUTO_ME\} remote \$\{PLUTO_PEER\} okey \$\{OKEY\} ikey \$\{IKEY\}
+      \$IP addr add \$\{VTI_LOCALADDR\} remote \$\{VTI_REMOTEADDR\} dev \$\{VTI_INTERFACE\}
+      \$IP link set \$\{VTI_INTERFACE\} up mtu 1436
+      sysctl -w net.ipv4.ip_forward=1
+      sysctl -w net.ipv4.conf.\$\{VTI_INTERFACE\}.disable_policy=1
+      sysctl -w net.ipv4.conf.\$\{VTI_INTERFACE\}.rp_filter=2
+      \$IPTABLES -I FORWARD -o \$\{VTI_INTERFACE\} -j ACCEPT
+      \$IPTABLES -t mangle -I FORWARD -o \$\{VTI_INTERFACE\} -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+      \$IPTABLES -t mangle -I INPUT -p esp -s \$\{PLUTO_PEER\} -d \$\{PLUTO_ME\} -j MARK --set-xmark \$\{PLUTO_MARK_IN\}
+      \$IP route flush table 220
+      ;;
+    down-client)
+      echo "Running down-client case" >> /var/log/ipsec-vti.log
+      \$IP link del \$\{VTI_INTERFACE\}
+      \$IPTABLES -D FORWARD -o \$\{VTI_INTERFACE\} -j ACCEPT
+      \$IPTABLES -t mangle -D FORWARD -o \$\{VTI_INTERFACE\} -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+      \$IPTABLES -t mangle -D INPUT -p esp -s \$\{PLUTO_PEER\} -d \$\{PLUTO_ME\} -j MARK --set-xmark \$\{PLUTO_MARK_IN\}      
+      ;;
+esac
+sysctl -w net.ipv4.conf.eth0.disable_policy=1
+sysctl -w net.ipv4.conf.eth0.disable_xfrm=1
+sysctl -w net.ipv4.conf.eth1.disable_policy=1
+sysctl -w net.ipv4.conf.eth1.disable_xfrm=1
+EOF
+
+sed -i 's;\\{\([^}]*\)\\};{\1};g' /etc/strongswan.d/ipsec-vti.sh
+
+chmod +x /etc/strongswan.d/ipsec-vti.sh
+ipsec stop
+sleep 30
+ipsec start
+
+
+# Configure BGP using BIRD
+
+rm -rf /etc/bird/bird.conf
+cat > /etc/bird/bird.conf <<EOF
+log syslog all;
+router id ${bgp_router_id};
+protocol device {
+        scan time 10;
+}
+protocol direct {
+      interface "vti2", "vti3";
+}
+protocol kernel {
+      preference 254;
+      learn;
+      merge paths on;
+      import filter {
+          if net ~ ${vti2_remote}/32 then accept;
+          if net ~ ${vti3_remote}/32 then accept;
+          else reject;
+      };
+      export filter {
+          if net ~ ${vti2_remote}/32 then reject;
+          if net ~ ${vti3_remote}/32 then reject;
+          else accept;
+      };
+}
+protocol static {
+      import all;
+      route ${vnet_cidr} via ${lan_gw};
+      route ${onprem_vm_cidr} via ${lan_gw};
+}
+
+protocol bgp avxspoke {
+      description "BGP to Aviatrix Spoke GW";
+      multihop;
+      local ${vti2_local} as ${local_bgp_asn};
+      neighbor ${vti2_remote} as ${remote_bgp_asn};
+      import filter \{accept;\};
+      export filter {
+        if net = ${onprem_vm_cidr} then accept;
+        reject;
+      };
+}
+
+protocol bgp avxspokeha {
+      description "BGP to Aviatrix Spoke GW HA";
+      multihop;
+      local ${vti3_local} as ${local_bgp_asn};
+      neighbor ${vti3_remote} as ${remote_bgp_asn};
+      import filter \{accept;\};
+      export filter {
+        if net = ${onprem_vm_cidr} then accept;
+        reject;
+    };
+}
+EOF
+
+sed -i 's;\\{\([^}]*\)\\};{\1};g' /etc/bird/bird.conf
+systemctl restart bird

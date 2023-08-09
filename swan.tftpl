@@ -1,0 +1,103 @@
+#!/bin/bash
+apt-get update -y
+apt-get install -y strongswan strongswan-pki libstrongswan-extra-plugins
+echo "net.ipv4.ip_forward=1" | tee -a /etc/sysctl.conf
+ip route add ${vnet_cidr} via ${lan_gw} dev eth1
+
+cat > /etc/ipsec.conf <<EOF
+config setup
+    charondebug="ike 1, knl 1, cfg 0"
+    uniqueids=no
+
+conn %default    
+    auto=start
+    type=tunnel    
+    left=${local_private_ip}
+    leftid=${local_public_ip}
+    leftsubnet=0.0.0.0/0
+    rightsubnet=0.0.0.0/0
+    keyexchange=ikev2
+    ike=aes256-sha256-modp2048
+    esp=aes256gcm128-modp2048
+    ikelifetime=86400s
+    lifetime=86400s
+    dpddelay=30s
+    dpdtimeout=120s
+    dpdaction=restart
+    closeaction=restart
+    authby=secret
+    leftupdown=/etc/strongswan.d/ipsec-vti.sh
+
+conn AVX_GW1
+    right=${remote_ip_1}
+    rightid=${remote_ip_1}
+    mark=%unique
+EOF
+
+cat > /etc/ipsec.secrets <<EOF
+${local_public_ip} ${remote_ip_1} : PSK "${preshared_key}"
+EOF
+
+sed -i 's/# install_routes = yes/install_routes = no/g' /etc/strongswan.d/charon.conf
+sed -i 's/# install_virtual_ip = yes/install_virtual_ip = no/g' /etc/strongswan.d/charon.conf
+
+cat > /etc/strongswan.d/ipsec-vti.sh <<EOF
+#!/bin/bash
+IP=\$(which ip)
+IPTABLES=\$(which iptables)
+IFS='/' read -ra PLUTO_MARK_OUT_ARR <<< "\$PLUTO_MARK_OUT"
+IFS='/' read -ra PLUTO_MARK_IN_ARR <<< "\$PLUTO_MARK_IN"
+
+OKEY=\$\{PLUTO_MARK_OUT_ARR[0]\}
+IKEY=\$\{PLUTO_MARK_IN_ARR[0]\}
+
+case "\$PLUTO_CONNECTION" in
+  AVX_GW1)
+    VTI_INTERFACE=vti1
+    VTI_LOCALADDR=${vti1_local}
+    VTI_REMOTEADDR=${vti1_remote}
+    METRIC=100
+    ;;
+esac
+case "\$\{PLUTO_VERB\}" in
+    up-client)
+      echo "Running up-client case" >> /var/log/ipsec-vti.log
+      \$IP link add \$\{VTI_INTERFACE\} type vti local \$\{PLUTO_ME\} remote \$\{PLUTO_PEER\} okey \$\{OKEY\} ikey \$\{IKEY\}
+      \$IP addr add \$\{VTI_LOCALADDR\} remote \$\{VTI_REMOTEADDR\} dev \$\{VTI_INTERFACE\}
+      \$IP link set \$\{VTI_INTERFACE\} up mtu 1436
+      sysctl -w net.ipv4.ip_forward=1
+      sysctl -w net.ipv4.conf.\$\{VTI_INTERFACE\}.disable_policy=1
+      sysctl -w net.ipv4.conf.\$\{VTI_INTERFACE\}.rp_filter=2
+      \$IPTABLES -I FORWARD -o \$\{VTI_INTERFACE\} -j ACCEPT
+      \$IPTABLES -t mangle -I FORWARD -o \$\{VTI_INTERFACE\} -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+      \$IPTABLES -t mangle -I INPUT -p esp -s \$\{PLUTO_PEER\} -d \$\{PLUTO_ME\} -j MARK --set-xmark \$\{PLUTO_MARK_IN\}
+      \$IP route flush table 220
+      \$IP route add 10.0.0.0/8 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      \$IP route add 172.16.0.0/12 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      \$IP route add 192.168.0.0/16 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      \$IP route add 100.64.0.0/10 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      ;;
+    down-client)
+      echo "Running down-client case" >> /var/log/ipsec-vti.log
+      \$IP link del \$\{VTI_INTERFACE\}
+      \$IPTABLES -D FORWARD -o \$\{VTI_INTERFACE\} -j ACCEPT
+      \$IPTABLES -t mangle -D FORWARD -o \$\{VTI_INTERFACE\} -p tcp -m tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+      \$IPTABLES -t mangle -D INPUT -p esp -s \$\{PLUTO_PEER\} -d \$\{PLUTO_ME\} -j MARK --set-xmark \$\{PLUTO_MARK_IN\}
+      \$IP route delete 10.0.0.0/8 dev \$\{VTI_INTERFACE\}
+      \$IP route delete 172.16.0.0/12 dev \$\{VTI_INTERFACE\}
+      \$IP route delete 192.168.0.0/16 dev \$\{VTI_INTERFACE\}
+      \$IP route add 100.64.0.0/10 dev \$\{VTI_INTERFACE\} metric \$\{METRIC\}
+      ;;
+esac
+sysctl -w net.ipv4.conf.eth0.disable_policy=1
+sysctl -w net.ipv4.conf.eth0.disable_xfrm=1
+sysctl -w net.ipv4.conf.eth1.disable_policy=1
+sysctl -w net.ipv4.conf.eth1.disable_xfrm=1
+EOF
+
+sed -i 's;\\{\([^}]*\)\\};{\1};g' /etc/strongswan.d/ipsec-vti.sh
+
+chmod +x /etc/strongswan.d/ipsec-vti.sh
+ipsec stop
+sleep 30
+ipsec start
