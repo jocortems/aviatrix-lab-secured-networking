@@ -135,6 +135,8 @@ gcp_transit_vnets = {
 2. Configure the providers in `providers.tf`
 3. Provide the required variables:
 
+| Name | Description |
+|------|---------|
 | `ssh_public_key_file` | The corresponding private key will be used to SSH into all of the VMs created, including AKS, GKE and EKS worker nodes. Password authentication is disabled. Make sure this file is in the same folder where you run this code from |
 | `azure_account` | Name of the Azure account onboarded on the Aviatrix Controller |
 | `aws_account` | Name of the AWS account onboarded on the Aviatrix Controller |
