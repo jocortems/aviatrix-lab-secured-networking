@@ -71,7 +71,7 @@ resource "google_compute_instance" "prod_instance" {
     machine_type = var.gcp_vmSKU
     zone = format("%s-a", each.value.region)
     metadata = {
-        ssh-keys = "${var.azure_vm_admin_username}:${file("ssh-key.pub")}"
+        ssh-keys = "${var.azure_vm_admin_username}:${file(var.ssh_public_key_file)}"
         startup-script = file("cloud-init.sh")
     }
     boot_disk {
@@ -96,7 +96,7 @@ resource "google_compute_instance" "prod_instance2" {
     machine_type = var.gcp_vmSKU
     zone = format("%s-a", each.value.region)
     metadata = {
-        ssh-keys = "${var.azure_vm_admin_username}:${file("ssh-key.pub")}"
+        ssh-keys = "${var.azure_vm_admin_username}:${file(var.ssh_public_key_file)}"
         startup-script = file("cloud-init.sh")
     }
     boot_disk {
@@ -121,7 +121,7 @@ resource "google_compute_instance" "dev_instance" {
     machine_type = var.gcp_vmSKU
     zone = format("%s-a", each.value.region)
     metadata = {
-        ssh-keys = "${var.azure_vm_admin_username}:${file("ssh-key.pub")}"
+        ssh-keys = "${var.azure_vm_admin_username}:${file(var.ssh_public_key_file)}"
         startup-script = file("cloud-init.sh")
     }
     boot_disk {
@@ -146,7 +146,7 @@ resource "google_compute_instance" "dev_instance2" {
     machine_type = var.gcp_vmSKU
     zone = format("%s-a", each.value.region)
     metadata = {
-        ssh-keys = "${var.azure_vm_admin_username}:${file("ssh-key.pub")}"
+        ssh-keys = "${var.azure_vm_admin_username}:${file(var.ssh_public_key_file)}"
         startup-script = file("cloud-init.sh")
     }
     boot_disk {
