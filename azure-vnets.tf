@@ -76,7 +76,7 @@ resource "azurerm_network_security_rule" "nsg_rule" {
   protocol                    = "*"
   source_port_range           = "*"
   destination_port_range      = "*"
-  source_address_prefixes     = [var.my_ipaddress, replace(data.http.my_ip.response_body,"\n","")]
+  source_address_prefixes     = concat(var.my_ipaddress, [replace(data.http.my_ip.response_body,"\n","")])
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.nsg[each.value.cidr].name
