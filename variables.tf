@@ -4,9 +4,9 @@ variable "resource_group_name" {
 }
 
 variable "my_ipaddress" {
-  type = list(string)
+  type = string
   description = "IP address to allow SSH access to the jumpbox VM and OnPrem VM deployed in Azure. If you run this code from your laptop you can leave this field empty, the IP address of your computer will be retrieved by terraform"
-  default = []
+  default = null
 }
 
 variable "azure_spoke_vnets" {
