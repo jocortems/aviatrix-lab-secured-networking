@@ -1,7 +1,7 @@
 module "eks" {
   count   = length(local.aws_spoke) > 0 ? 1 : 0
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.15.3"
+  version = "19.16.0"
 
   cluster_name                   = "eks-${var.k8s_cluster_name}"
   cluster_version                = "1.27"
