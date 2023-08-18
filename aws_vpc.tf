@@ -143,6 +143,9 @@ resource "aws_vpc_security_group_egress_rule" "all" {
 }
 
 resource "aws_internet_gateway" "aws_igw" {
+  lifecycle {
+    create_before_destroy = true
+  }
   for_each      = { for each in local.aws_spoke : each.cidr => each }
   vpc_id        = aws_vpc.aws_vpc[each.value.cidr].id
   tags = {
