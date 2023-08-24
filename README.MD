@@ -107,9 +107,9 @@ gcp_transit_vnets = {
 ### Prerequisites
 
 1. [Terraform v1.3+](https://www.terraform.io/downloads.html)
-2. [Azure CLI v2.51](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). Make sure to set the AWS CLI credentials to use the same credentials as the Terraform AWS provider and the account has been assigned the policies as described in (8) below. [EKS module](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest) relies on AWS CLI to add the self-managed worker nodes to the cluster. Before running this code run `aws sts get-caller-identity` to make sure AWS CLI is using the proper user
+2. [Azure CLI v2.51](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)get-caller-identity` to make sure AWS CLI is using the proper user
 3. [Gcloud CLI](https://cloud.google.com/sdk/docs/install)
-4. [AWS CLI v2.11](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). 
+4. [AWS CLI v2.11](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). Make sure to set the AWS CLI credentials to use the same credentials as the Terraform AWS provider and the account has been assigned the policies as described in (8) below. [EKS module](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest) relies on AWS CLI to add the self-managed worker nodes to the cluster. Before running this code run `aws sts 
 5. [kubectl v1.27](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_kubectl)
 6. [gke-gcloud-auth-plugin](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin)
 7. The GCP Service Account used to run this code must have the following roles:
@@ -143,21 +143,12 @@ gcp_transit_vnets = {
 | `gcp_account` | Name of the GCP account onboarded on the Aviatrix Controller |
 
 4. Authenticate to Azure `az login --use-device-code`
-5. Register `Microsoft.ContainerSerivce` and `Microsoft.KubernetesConfiguration` resource providers and enable Azure preview features for AKS; this is needed to use Kubernetes version 1.27 with AKS:
-
-```
-az provider register --namespace Microsoft.ContainerService --wait 
-az provider register --namespace Microsoft.KubernetesConfiguration --wait
-az extension add --name aks-preview
-az extension update --name aks-preview
-```
-
-6. Export environment variable `USE_GKE_GCLOUD_AUTH_PLUGIN=True`
-7. Authenticate to Google Cloud using gcloud cli `gcloud auth application-default login`. This is needed to allow Terraform to deploy Kubernetes resources to GKE
-8. Run the Terraform code with `terraform init` `terraform plan` and `terraform apply`
-9. It is very likely that the initial apply will fail because of rate limiting on the EKS API Server, if this happens just run `terraform apply` again
-10. After tearing down the environment with `terraform destroy` make sure to remove the added AKS, EKS and GKE Kubernetes clusters from your local `~/.kube/config` file. If the clusters are not removed from the file and the code is run again it will fail because it won't be able to update the file with the cluster's information
-11. It is very likely that `terraform destroy` won't be able to destroy some of the kubernetes objects and, in turn, unable to destroy the node pools and clusters. If this happens run `terraform state list | grep ^kubernetes | xargs -I {} terraform state rm {}` after `terraform destroy` errors out, go to the AWS console and manually delete the 3 NLBs created by Kubernetes `aws-load-balancer-controller`named `nginx-ingress`, `myipap-svc` and `getcerts-svc`, and then run `terraform destroy` again
+5. Export environment variable `USE_GKE_GCLOUD_AUTH_PLUGIN=True`
+6. Authenticate to Google Cloud using gcloud cli `gcloud auth application-default login`. This is needed to allow Terraform to deploy Kubernetes resources to GKE
+7. Run the Terraform code with `terraform init` `terraform plan` and `terraform apply`
+8. It is very likely that the initial apply will fail because of rate limiting on the EKS API Server, if this happens just run `terraform apply` again
+9. After tearing down the environment with `terraform destroy` make sure to remove the added AKS, EKS and GKE Kubernetes clusters from your local `~/.kube/config` file. If the clusters are not removed from the file and the code is run again it will fail because it won't be able to update the file with the cluster's information
+10. It is very likely that `terraform destroy` won't be able to destroy some of the kubernetes objects and, in turn, unable to destroy the node pools and clusters. If this happens run `terraform state list | grep ^kubernetes | xargs -I {} terraform state rm {}` after `terraform destroy` errors out, go to the AWS console and manually delete the 3 NLBs created by Kubernetes `aws-load-balancer-controller`named `nginx-ingress`, `myipap-svc` and `getcerts-svc`, and then run `terraform destroy` again
 
 ## Providers
 
