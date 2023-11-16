@@ -155,13 +155,13 @@ gcp_transit_vnets = {
 | Name | Version |
 |------|---------|
 | <a name="provider_azurerm"></a> [azurerm](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs) | ~> 3.64 |
-| <a name="provider_azuread"></a> [azuread](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs) | = 2.41.0 |
-| <a name="provider_google"></a> [google](https://registry.terraform.io/providers/hashicorp/google/latest/docs) | = 4.66.0 |
-| <a name="provider_aws"></a> [aws](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) | = 5.0.0 |
-| <a name="provider_aviatrix"></a> [aviatrix](https://registry.terraform.io/providers/AviatrixSystems/aviatrix/latest/docs) | = 3.1.1 |
-| <a name="provider_kubernetes"></a> [kubernetes](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs) | = 2.20.0 |
-| <a name="provider_helm"></a> [helm](https://registry.terraform.io/providers/hashicorp/helm/latest/docs) | = 2.9.0 |
-| <a name="provider_http"></a> [http](https://registry.terraform.io/providers/hashicorp/http/latest/docs) | = 3.2.1 |
+| <a name="provider_azuread"></a> [azuread](https://registry.terraform.io/providers/hashicorp/azuread/latest/docs) | ~> 2.41 |
+| <a name="provider_google"></a> [google](https://registry.terraform.io/providers/hashicorp/google/latest/docs) | ~> 4.66 |
+| <a name="provider_aws"></a> [aws](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) | ~> 5.0.0 |
+| <a name="provider_aviatrix"></a> [aviatrix](https://registry.terraform.io/providers/AviatrixSystems/aviatrix/latest/docs) | ~> 3.1 |
+| <a name="provider_kubernetes"></a> [kubernetes](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs) | ~> 2.20 |
+| <a name="provider_helm"></a> [helm](https://registry.terraform.io/providers/hashicorp/helm/latest/docs) | ~> 2.9 |
+| <a name="provider_http"></a> [http](https://registry.terraform.io/providers/hashicorp/http/latest/docs) | ~> 3.2 |
 
 ## Variables
 
