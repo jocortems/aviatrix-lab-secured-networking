@@ -335,7 +335,7 @@ resource "azuread_application" "k8s" {
 }
 
 resource "azuread_service_principal" "k8s" {
-  application_id               = azuread_application.k8s.application_id
+  application_id               = azuread_application.k8s.client_id
   app_role_assignment_required = false
   owners                       = [data.azuread_client_config.current.object_id]
 }

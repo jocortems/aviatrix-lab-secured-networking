@@ -1,14 +1,13 @@
 module "eks" {
   count   = length(local.aws_spoke) > 0 ? 1 : 0
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.16.0"
+  version = "19.20.0"
 
   cluster_name                   = "eks-${var.k8s_cluster_name}"
   cluster_version                = "1.27"
   cluster_endpoint_public_access = true
   cluster_endpoint_private_access = false
   cluster_ip_family              = "ipv4"
-  #cluster_service_ipv4_cidr      = var.eks_svc_cidr
 
   tags = {
     environment = "prod"
@@ -18,12 +17,27 @@ module "eks" {
   cluster_addons = {
     coredns = {
       most_recent = true
+      preserve = true
+
+      timeouts = {
+        create = "30m"
+        delete = "10m"
+      }
     }
     kube-proxy = {
       most_recent = true
     }
     vpc-cni = {
-      most_recent = true
+      most_recent               = true
+      before_compute            = true
+      service_account_role_arn  = module.vpc_cni_irsa.iam_role_arn
+      configuration_values      = jsonencode({
+        env = {
+          # Reference docs https://docs.aws.amazon.com/eks/latest/userguide/cni-increase-ip-addresses.html
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
   }
 
@@ -162,6 +176,22 @@ module "eks" {
   }
 }
 
+module "vpc_cni_irsa" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.31.0"
+
+  role_name_prefix      = "vpc-cni"
+  attach_vpc_cni_policy = true
+  vpc_cni_enable_ipv4   = true
+
+  oidc_providers = {
+    main = {
+      provider_arn               = module.eks[0].oidc_provider_arn
+      namespace_service_accounts = ["kube-system:aws-node"]
+    }
+  }
+}
+
 provider "kubernetes" {
   host                   = module.eks[0].cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks[0].cluster_certificate_authority_data)
@@ -187,31 +217,25 @@ provider "helm" {
   }
 }
 
-resource "kubernetes_namespace" "eks_certmanager" {
-  depends_on = [
-    module.eks
-  ]
-  metadata {
-    name = "cert-manager"
-  }
-}
-
-
 resource "helm_release" "eks_certmanager" {
   depends_on = [ 
     module.eks,   
-    kubernetes_daemon_set_v1.eks_cert_customizations ,
-    kubernetes_namespace.eks_certmanager
+    kubernetes_daemon_set_v1.eks_cert_customizations
   ]
   name       = "cert-manager"
   repository = "https://charts.jetstack.io"
   chart      = "cert-manager"
   namespace  = "cert-manager"
-  version    = "v1.12.3"
+  version    = "v1.13.2"  
+  create_namespace = true
 
   set {
     name  = "installCRDs"
     value = "true"
+  }
+
+  lifecycle {
+    ignore_changes = all
   }
 }
 
@@ -219,20 +243,22 @@ resource "helm_release" "eks_trustmanager" {
   depends_on = [ 
     kubernetes_daemon_set_v1.eks_cert_customizations,
     module.eks,
-    kubernetes_namespace.eks_certmanager,
     helm_release.eks_certmanager
   ]  
   name       = "trust-manager"
   repository = "https://charts.jetstack.io"
   chart      = "trust-manager"
   namespace  = "cert-manager"
-  version    = "v0.5.0"
+  version    = "v0.7.0"
 }
 
 resource "kubernetes_secret_v1" "eks_certmanager_ca" {
+  depends_on = [
+    helm_release.eks_certmanager
+  ]
   metadata {
     name      = "ca-clusterissuer"
-    namespace = kubernetes_namespace.eks_certmanager.metadata[0].name
+    namespace = "cert-manager"
   }
   data = {
     "tls.crt" = trimspace(file("ca-chain.pem"))
@@ -240,14 +266,19 @@ resource "kubernetes_secret_v1" "eks_certmanager_ca" {
   }
 }
 
+data "http" "policy" {
+  url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.6.1/docs/install/iam_policy.json"
+}
+
 resource "aws_iam_policy" "nlb_controller_policy" {
   name        = "awsLoadBalancerController"
   description = "Policy used for EKS aws-load-balancer-controller"
-  policy      = file("awsEksLoadBalancerControllerPolicy.json")
+  policy      = data.http.policy.response_body
 }
 
 module "load_balancer_controller_irsa_role" {
   source = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
+  version = "~> 5.31.0"
   role_name = "load-balancer-controller"
   oidc_providers = {
     main = {
@@ -292,7 +323,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 
   set {
     name  = "imageTag"
-    value = "v2.5.4"
+    value = "v2.6.2"
   }
 
   set {
@@ -306,21 +337,14 @@ resource "helm_release" "aws_load_balancer_controller" {
   }
 
   set {
-    name  = "logLevel"
-    value = "debug"
+    name  = "enableServiceMutatorWebhook"
+    value = false
   }
-}
-
-resource "time_sleep" "eks_wait_for_lb_controller_webhooks" {
-  depends_on = [
-    helm_release.aws_load_balancer_controller
-  ]
-  create_duration = "3m"
 }
 
 resource "helm_release" "aws_nginx_ingress" {
   depends_on = [ 
-    time_sleep.eks_wait_for_lb_controller_webhooks
+    helm_release.aws_load_balancer_controller
   ]
   name       = "ingress-nginx"
   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -329,7 +353,7 @@ resource "helm_release" "aws_nginx_ingress" {
 
   set {
     name = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
-    value = "nlb"
+    value = "external"
   }
 
   set {
@@ -562,8 +586,7 @@ resource "kubernetes_deployment_v1" "eks_getcerts" {
 
 
 resource "kubernetes_service" "aws_myipapp_service" {  
-  depends_on = [ 
-    helm_release.aws_load_balancer_controller,
+  depends_on = [
     kubernetes_deployment_v1.eks_externaldns,
     null_resource.eks_certmanager
   ]
@@ -580,7 +603,7 @@ resource "kubernetes_service" "aws_myipapp_service" {
       "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "ip"
       "service.beta.kubernetes.io/aws-load-balancer-healthcheck-path" = "/api/healthcheck"
       "service.beta.kubernetes.io/aws-load-balancer-scheme" = "internal"
-      "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
+      "service.beta.kubernetes.io/aws-load-balancer-type" = "external"
       "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port" = "8080"
       "service.beta.kubernetes.io/aws-load-balancer-name" = "myipap-svc"
       "external-dns.alpha.kubernetes.io/hostname" = "eks-myip-svc.${azurerm_private_dns_zone.cse_org.name}"
@@ -606,7 +629,6 @@ resource "kubernetes_service" "aws_myipapp_service" {
 
 resource "kubernetes_service" "eks_getcerts_service" {
   depends_on = [
-    helm_release.aws_load_balancer_controller,
     kubernetes_deployment_v1.eks_externaldns,
     null_resource.eks_certmanager
   ]
@@ -622,7 +644,7 @@ resource "kubernetes_service" "eks_getcerts_service" {
       "service.beta.kubernetes.io/aws-load-balancer-nlb-target-type" = "ip"
       "service.beta.kubernetes.io/aws-load-balancer-healthcheck-path" = "/api/healthcheck"
       "service.beta.kubernetes.io/aws-load-balancer-scheme" = "internal"
-      "service.beta.kubernetes.io/aws-load-balancer-type" = "nlb"
+      "service.beta.kubernetes.io/aws-load-balancer-type" = "external"
       "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port" = "5000"
       "service.beta.kubernetes.io/aws-load-balancer-name" = "getcerts-svc"
       "external-dns.alpha.kubernetes.io/hostname" = "eks-getcerts-svc.${azurerm_private_dns_zone.cse_org.name}"
@@ -868,20 +890,13 @@ resource "null_resource" "eks_credentials" {
   }
 }
 
-resource "time_sleep" "eks_wait_for_webhook_servers" {
+resource "null_resource" "eks_certmanager" {
   depends_on = [ 
     null_resource.eks_credentials,
     kubernetes_secret_v1.eks_certmanager_ca,
     helm_release.eks_certmanager,
     helm_release.eks_trustmanager,
     helm_release.aws_nginx_ingress
-  ]
-  create_duration = "3m"
-}
-
-resource "null_resource" "eks_certmanager" {
-  depends_on = [ 
-    time_sleep.eks_wait_for_webhook_servers
   ]
   provisioner "local-exec" {
     command = <<EOF
@@ -960,7 +975,7 @@ resource "kubernetes_secret_v1" "eks_externaldns" {
       "tenantId"         = "${data.azurerm_subscription.current.tenant_id}"
       "subscriptionId"   = "${data.azurerm_subscription.current.subscription_id}"
       "resourceGroup"    = "${azurerm_resource_group.rg_name[0].name}"
-      "aadClientId"      = "${azuread_service_principal.k8s.application_id}"
+      "aadClientId"      = "${azuread_service_principal.k8s.client_id}"
       "aadClientSecret"  = "${azuread_service_principal_password.k8s_password.value}"
     })
   }

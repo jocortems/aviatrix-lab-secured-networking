@@ -109,7 +109,7 @@ gcp_transit_vnets = {
 1. [Terraform v1.3+](https://www.terraform.io/downloads.html)
 2. [Azure CLI v2.51](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 3. [Gcloud CLI](https://cloud.google.com/sdk/docs/install)
-4. [AWS CLI v2.11](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). Make sure to set the AWS CLI credentials to use the same credentials as the Terraform AWS provider and the account has been assigned the policies as described in (8) below. [EKS module](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest) relies on AWS CLI to add the self-managed worker nodes to the cluster. Before running this code run `aws sts get-caller-identity` to make sure AWS CLI is using the proper user
+4. [AWS CLI v2.11](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html). Make sure to set the AWS CLI credentials to use the same credentials as the Terraform AWS provider and the account has been assigned the policies as described in (8) below. Make sure ~/.aws/config file specifies the same region as the AWS terraform provider. [EKS module](https://registry.terraform.io/modules/terraform-aws-modules/eks/aws/latest) relies on AWS CLI to add the self-managed worker nodes to the cluster. Before running this code run `aws sts get-caller-identity` to make sure AWS CLI is using the proper user
 5. [kubectl v1.27](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_kubectl)
 6. [gke-gcloud-auth-plugin](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin)
 7. The GCP Service Account used to run this code must have the following roles:

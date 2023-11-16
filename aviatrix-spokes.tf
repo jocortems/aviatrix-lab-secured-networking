@@ -118,7 +118,8 @@ resource "aviatrix_spoke_gateway" "aws"{
   single_ip_snat                    = true
   tags ={
     private-rt-1 = aws_route_table_association.private_subnet_1_rt_association[each.value.cidr].route_table_id,
-    private-rt-2 = aws_route_table_association.private_subnet_2_rt_association[each.value.cidr].route_table_id
+    private-rt-2 = aws_route_table_association.private_subnet_2_rt_association[each.value.cidr].route_table_id,
+    igw          = aws_internet_gateway.aws_igw[each.value.cidr].id
   }
 }
 

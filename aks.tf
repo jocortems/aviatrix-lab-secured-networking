@@ -770,7 +770,7 @@ resource "kubernetes_secret_v1" "aks_externaldns" {
       "tenantId"         = "${data.azurerm_subscription.current.tenant_id}"
       "subscriptionId"   = "${data.azurerm_subscription.current.subscription_id}"
       "resourceGroup"    = "${azurerm_resource_group.rg_name[0].name}"
-      "aadClientId"      = "${azuread_service_principal.k8s.application_id}"
+      "aadClientId"      = "${azuread_service_principal.k8s.client_id}"
       "aadClientSecret"  = "${azuread_service_principal_password.k8s_password.value}"
     })
   }
